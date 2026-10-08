@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "raftmover"
+version = "0.1.0"
+description = "Fail-closed handoff of closed SQLite chat databases between Linux machines"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+dependencies = ["raftward>=0.1.4,<0.2", "tomli>=2; python_version < '3.11'"]
+classifiers = ["Programming Language :: Python :: 3", "Operating System :: POSIX :: Linux", "Topic :: System :: Archiving :: Backup"]
+
+[project.scripts]
+move = "raftmover.cli:main"
+raftmove = "raftmover.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Dragon-Lady/raftmover"
+Issues = "https://github.com/Dragon-Lady/raftmover/issues"
+Funding = "https://github.com/sponsors/Dragon-Lady"
+Changelog = "https://github.com/Dragon-Lady/raftmover/releases"
+
+[tool.setuptools.packages.find]
+include = ["raftmover*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
