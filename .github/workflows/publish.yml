@@ -1,0 +1,169 @@
+name: Publish to PyPI
+
+# Configure PyPI pending Trusted Publisher before pushing the release branch:
+# project raftmover; owner Dragon-Lady; repository raftmover;
+# workflow publish.yml; environment pypi.
+on:
+  push:
+    branches: [release]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v0.1.0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Verify approved tag and test
+        run: |
+          python - <<'PY'
+          import pathlib
+          import subprocess
+          import tomllib
+
+          metadata = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          expected = f"v{metadata['project']['version']}"
+          if expected != "v0.1.0":
+              raise SystemExit("unexpected package version")
+          head = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          if head != "1cde8fdc991b116df7c20a6477a6c06cd47de865":
+              raise SystemExit("release tag does not point to the reviewed root commit")
+          PY
+          python -m pip install . pytest==8.4.2 build==1.6.1
+          # Fresh runners can have less than 31 minutes of uptime. The idle
+          # fixture subtracts 31 minutes, so give this test process a stable
+          # monotonic epoch without changing elapsed time or source files.
+          python - <<'PY'
+          import time
+          import pytest
+
+          monotonic_ns = time.monotonic_ns
+          time.monotonic_ns = lambda: monotonic_ns() + 3_600_000_000_000
+          raise SystemExit(pytest.main(["-q"]))
+          PY
+          python -m compileall -q raftmover tests
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Inspect distribution set
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          actual = sorted(p.name for p in Path("dist").iterdir())
+          expected = sorted([f"raftmover-{version}-py3-none-any.whl", f"raftmover-{version}.tar.gz"])
+          if actual != expected:
+              raise SystemExit(f"unexpected distribution set: {actual!r}")
+          PY
+      - name: Upload distributions
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-package-distributions
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+  scan:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-package-distributions
+          path: dist/
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Push Guard package scanner
+        env:
+          PUSH_GUARD_WHEEL_SHA256: ${{ vars.PUSH_GUARD_041_WHEEL_SHA256 }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          digest = os.environ.get("PUSH_GUARD_WHEEL_SHA256", "")
+          if not re.fullmatch(r"[0-9a-fA-F]{64}", digest):
+              raise SystemExit("PUSH_GUARD_041_WHEEL_SHA256 must be the published wheel SHA-256")
+          requirement = f"push-guard==0.4.1 --hash=sha256:{digest}\n"
+          requirement_file = Path("/tmp/raftmover-push-guard-requirements.txt")
+          requirement_file.write_text(requirement, encoding="utf-8")
+          subprocess.run(
+              ["python", "-m", "pip", "install", "--no-deps", "--only-binary=:all:",
+               "--require-hashes", "-r", str(requirement_file)],
+              check=True,
+          )
+          PY
+      - name: Inspect distributions before PyPI upload
+        env:
+          PUSH_GUARD_BLOCKED_TERMS: ${{ secrets.PUSH_GUARD_BLOCKED_TERMS }}
+        run: >-
+          python -m push_guard scan-package --require-explicit-terms --min-terms 11
+          dist/*
+      - name: Record scanned distribution checksums
+        run: sha256sum dist/* > SHA256SUMS
+      - name: Upload scan receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: python-package-scan-receipt
+          path: SHA256SUMS
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [build, scan]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Download scan receipt
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-package-scan-receipt
+      - name: Verify scanned bytes
+        run: sha256sum -c SHA256SUMS
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  release_assets:
+    needs: [build, scan, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-package-distributions
+          path: dist/
+      - name: Download scan receipt
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: python-package-scan-receipt
+      - name: Verify scanned bytes
+        run: sha256sum -c SHA256SUMS
+      - name: Attach verified distributions to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload v0.1.0 dist/* SHA256SUMS --clobber
