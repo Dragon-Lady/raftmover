@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 import signal
 import stat
-import time
 
 import pytest
 
@@ -191,7 +190,11 @@ def test_send_interrupt_cleans_private_run(tmp_path):
 
 def test_user_timer_uses_aggregate_logind_hint_without_session_id(monkeypatch):
     monkeypatch.delenv("XDG_SESSION_ID", raising=False)
-    now = time.monotonic_ns() // 1000
+    # IdleSinceHintMonotonic is microseconds since boot. A fresh CI machine
+    # has not been up for 31 minutes, so a live clock makes the hint look
+    # invalid. Freeze boot-time far enough ahead that the hint stays positive.
+    now = 40 * 60 * 1_000_000
+    monkeypatch.setattr(idle.time, "monotonic_ns", lambda: now * 1000)
 
     class Result:
         returncode = 0
