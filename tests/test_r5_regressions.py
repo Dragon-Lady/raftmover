@@ -145,14 +145,16 @@ while True: time.sleep(0.1)
 
 @pytest.mark.skipif(not hasattr(os, "pidfd_open"), reason="requires Linux pidfd")
 def test_A1_close_signals_only_one_root_in_real_process_tree(tmp_path):
+    # A previous interrupted run may leave its dummy tree alive.
+    process_name = "rm" + os.urandom(6).hex()
     script = tmp_path / "tree.py"
-    script.write_text(_TREE)
+    script.write_text(_TREE.replace("rmr5dummy", process_name))
     log = tmp_path / "term.log"
     proc = subprocess.Popen([sys.executable, str(script), str(log)], start_new_session=True)
     try:
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
-            if (root := app_close._read_process(proc.pid)) and root.comm == "rmr5dummy":
+            if (root := app_close._read_process(proc.pid)) and root.comm == process_name:
                 break
             time.sleep(0.05)
         else:
@@ -162,7 +164,7 @@ def test_A1_close_signals_only_one_root_in_real_process_tree(tmp_path):
             conn.execute("CREATE TABLE t(x)")
         old = time.time() - 60
         os.utime(db, (old, old))
-        app = {"processes": ["rmr5dummy"], "quit": "signal:TERM",
+        app = {"processes": [process_name], "quit": "signal:TERM",
                "exe": os.path.realpath(sys.executable), "app_idle_minutes": 0.002,
                "cpu_idle_pct": 50, "busy_processes": [], "close_timeout_s": 3}
 
