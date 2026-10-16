@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "raftmover"
-version = "0.1.0"
+version = "0.1.1"
 description = "Fail-closed handoff of closed SQLite chat databases between Linux machines"
 readme = "README.md"
 requires-python = ">=3.10"
