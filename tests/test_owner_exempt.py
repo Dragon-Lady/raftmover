@@ -33,7 +33,8 @@ def test_owner_exempt_can_be_turned_off(tmp_path):
 
 @pytest.mark.parametrize("value", ["cursor-agent-worker", ["cursor"], ["*"],
                                    ["cursor-agent-worker", "cursor-agent-worker"],
-                                   [None], {"cursor-agent-worker": True}])
+                                   [None], [["cursor-agent-worker"]],
+                                   {"cursor-agent-worker": True}])
 def test_owner_exempt_rejects_anything_but_known_kinds(tmp_path, value):
     with pytest.raises(ConfigError, match="owner_exempt accepts only"):
         validate(raw_config(tmp_path, owner_exempt=value))

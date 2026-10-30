@@ -140,8 +140,10 @@ def validate(raw):
     if type(keep_last_n) is not int or not 1 <= keep_last_n <= 100:
         raise ConfigError("keep_last_n must be between 1 and 100")
     owner_exempt = raw.get("owner_exempt", list(DEFAULT_OWNER_EXEMPT))
-    if (not isinstance(owner_exempt, list) or len(set(owner_exempt)) != len(owner_exempt)
-            or any(kind not in OWNER_EXEMPT_KINDS for kind in owner_exempt)):
+    if (not isinstance(owner_exempt, list)
+            or any(not isinstance(kind, str) or kind not in OWNER_EXEMPT_KINDS
+                   for kind in owner_exempt)
+            or len(set(owner_exempt)) != len(owner_exempt)):
         raise ConfigError("owner_exempt accepts only: " + ", ".join(OWNER_EXEMPT_KINDS))
     return {"machine_label": label, "peer_label": peer,
             "transport": transport, "apps": checked_apps,
