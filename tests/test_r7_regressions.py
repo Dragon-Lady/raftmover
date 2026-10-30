@@ -44,9 +44,10 @@ def test_declined_stage_does_not_block_new_manual_adoption(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("version,available", [
-    ("0.1.3", False), ("0.1.4", True), ("0.1.4.post1", True),
-    ("0.1.5rc1", True), ("0.1.5.dev2", True), ("0.1.4+local", True),
-    ("0.2.0", False), ("unparseable", False),
+    ("0.1.3", False), ("0.1.4", False), ("0.1.4.post1", False), ("0.1.4+local", False),
+    ("0.1.5rc1", False), ("0.1.5.dev2", False), ("0.1.5", True), ("0.1.5.post1", True),
+    ("0.1.5+local", True), ("0.1.6rc1", True), ("0.1.6.dev2", True),
+    ("0.2.0rc1", False), ("0.2.0", False), ("unparseable", False),
 ])
 def test_ward_runtime_check_matches_dependency_range(monkeypatch, version, available):
     monkeypatch.setattr(raftward, "__version__", version)
