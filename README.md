@@ -26,6 +26,20 @@ after that backup passes its hash and Raft Ward checks. Review both histories
 before restoring or using `move adopt RAFT-LABEL --keep-both`, which overrides
 the first-pair and divergence refusal.
 
+Each app's `processes` entries are matched against every same-user process's
+name, executable path, and full command line. Any match holds that app's rafts
+with `owning-app-running`, including a shell, script, or wrapper whose command
+line merely mentions the app (for example `bash -c "... codex ..."`). Run Mover
+from a plain shell and pick process names that only the app itself uses.
+
+Cursor's background agent worker (`cursor-agent ... worker start`) does not
+hold rafts by itself. `owner_exempt = ["cursor-agent-worker"]`, the default,
+passes Raft Ward 0.1.5's fixed exemption for that worker only. The editor and
+every other `cursor-agent` command still count as owners, and the worker still
+blocks a move if it has the database or a sidecar open or looks like a
+transfer. Set `owner_exempt = []` to treat the worker as an owner again; no
+other values are accepted.
+
 Bare `move` never closes an app. An experimental opt-in `quit = "signal:TERM"` app setting
 allows `move --close` or a timer's `--auto` run to politely close an idle app.
 Set `exe` to the main process's absolute executable path. The first configured

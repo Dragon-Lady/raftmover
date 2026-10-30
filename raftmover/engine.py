@@ -15,7 +15,7 @@ import time
 from urllib.parse import quote
 
 from . import __version__
-from .config import default_path, state_path
+from .config import DEFAULT_OWNER_EXEMPT, default_path, state_path
 from .safety import (SafetyError, copy_private, digest, directory_fd, frozen_sqlite,
                      new_private_file, private_dir, remove_run, run_dir, sidecar_stat,
                      source_stat)
@@ -35,7 +35,10 @@ def ward_api():
         if match is None:
             raise ValueError
         version = tuple(int(part) for part in match.groups())
-        if version < (0, 1, 4) or version >= (0, 2, 0) or API_VERSION != 1:
+        # A pre-release or dev build of 0.1.5 sorts below 0.1.5 (PEP 440).
+        early = re.match(r"(?:a|b|rc)\d|\.?dev\d", raftward.__version__[match.end():])
+        if (version < (0, 1, 5) or (version == (0, 1, 5) and early)
+                or version >= (0, 2, 0) or API_VERSION != 1):
             raise ValueError
         return gate, verify
     except (ImportError, AttributeError, ValueError, TypeError):
@@ -609,7 +612,8 @@ class Engine:
         patterns = self.cfg["apps"][raft["app"]]["processes"]
         result = self.gate(raft["path"], patterns,
                            transfer_dirs=[str(raft["path"])
-                                          + suffix for suffix in ("", "-wal", "-shm", "-journal")])
+                                          + suffix for suffix in ("", "-wal", "-shm", "-journal")],
+                           owner_exempt=list(self.cfg.get("owner_exempt", DEFAULT_OWNER_EXEMPT)))
         if getattr(result, "open_file_check", "verified") == "unverifiable":
             self.open_file_check = "unverifiable"
         if not getattr(result, "passed", False):
