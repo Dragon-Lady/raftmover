@@ -77,18 +77,29 @@ def test_unvalidated_config_dict_keeps_the_default(tmp_path):
     assert seen == [["cursor-agent-worker"]]
 
 
-# Real /proc checks through the installed Raft Ward. The fake worker's argv0
-# starts with "cursor-agent" so Raft Ward's structural worker check applies,
-# and a random suffix keeps the owner pattern unique to this test run.
-def start(argv0, *args, ready):
-    process = subprocess.Popen([argv0, "-c", "import sys, time\n"
-                                "f = open(sys.argv[1], 'rb') if sys.argv[1] != '-' else None\n"
-                                "time.sleep(30)", *args],
-                               executable=sys.executable,
+# Real /proc checks through the installed Raft Ward. The fake process runs a
+# script named "cursor-agent-rmtest-<random>" so Raft Ward's structural worker
+# check sees a cursor-agent program, and the owner pattern stays unique to this
+# run. An optional file to hold open comes through the environment, not argv.
+def start(tmp_path, marker, *args, hold=None, ready):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    script = bin_dir / marker
+    script.write_text("import os, time\n"
+                      "held = open(os.environ['RMTEST_HOLD'], 'rb') "
+                      "if os.environ.get('RMTEST_HOLD') else None\n"
+                      "time.sleep(30)\n")
+    env = dict(os.environ)
+    env.pop("RMTEST_HOLD", None)
+    if hold is not None:
+        env["RMTEST_HOLD"] = str(hold)
+    process = subprocess.Popen([sys.executable, str(script), *args], env=env,
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(200):
+    for _ in range(500):
         if ready(process.pid):
             return process
+        if process.poll() is not None:
+            break
         time.sleep(0.01)
     process.terminate()
     process.wait(timeout=5)
@@ -138,7 +149,7 @@ def dry_check(engine):
 @pytest.mark.skipif(sys.platform != "linux", reason="Raft Ward process gating is Linux-only")
 def test_real_proc_cursor_agent_worker(tmp_path):
     marker = "cursor-agent-rmtest-" + secrets.token_hex(4)
-    worker = start(marker, "-", "worker", "start", ready=has_cmdline(marker))
+    worker = start(tmp_path, marker, "worker", "start", ready=has_cmdline(marker))
     try:
         engine, _ = real_engine(tmp_path, marker)
         assert dry_check(engine) == "pass"
@@ -152,7 +163,7 @@ def test_real_proc_cursor_agent_worker(tmp_path):
 @pytest.mark.skipif(sys.platform != "linux", reason="Raft Ward process gating is Linux-only")
 def test_real_proc_other_cursor_agent_commands_still_own(tmp_path):
     marker = "cursor-agent-rmtest-" + secrets.token_hex(4)
-    other = start(marker, "-", "chat", ready=has_cmdline(marker))
+    other = start(tmp_path, marker, "chat", ready=has_cmdline(marker))
     try:
         engine, _ = real_engine(tmp_path, marker)
         assert dry_check(engine) == "owning-app-running"
@@ -167,7 +178,7 @@ def test_real_proc_exempt_worker_holding_the_raft_still_blocks(tmp_path):
     db = tmp_path / "a.sqlite"
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE t(x)")
-    worker = start(marker, str(db), "worker", "start", ready=has_open(db))
+    worker = start(tmp_path, marker, "worker", "start", hold=db, ready=has_open(db))
     try:
         engine, _ = real_engine(tmp_path, marker)
         assert dry_check(engine) == "target-handle-open"
