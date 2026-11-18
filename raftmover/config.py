@@ -14,8 +14,9 @@ LABEL = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 REMOTE = re.compile(r"[A-Za-z0-9_.@:/~+-]{1,240}\Z")
 # Raft Ward owner exemptions Mover may pass. Each is a fixed structural check in
 # Raft Ward; an exempt process still blocks on open target files and transfers.
+# Off by default, matching Raft Ward. Opt in with owner_exempt = ["cursor-agent-worker"].
 OWNER_EXEMPT_KINDS = ("cursor-agent-worker",)
-DEFAULT_OWNER_EXEMPT = ("cursor-agent-worker",)
+DEFAULT_OWNER_EXEMPT = ()
 
 
 class ConfigError(Exception):
@@ -176,9 +177,11 @@ idle_time = "02:30"
 user_idle_minutes = 30
 stage_only = false
 keep_last_n = 5
-# Cursor's background agent worker does not hold app rafts by itself; it is
-# still checked for open raft files. Use [] to treat it as an owner.
-owner_exempt = ["cursor-agent-worker"]
+# Off by default, matching Raft Ward. On a machine where Cursor's detached
+# background worker should not hold rafts, set:
+# owner_exempt = ["cursor-agent-worker"]
+# The worker is still checked for open raft files and transfers.
+owner_exempt = []
 transport = { kind = "rclone", remote = "raftcrypt:rafts" }
 
 [apps.chat]

@@ -23,8 +23,13 @@ def raw_config(tmp_path, **extra):
     return raw
 
 
-def test_owner_exempt_defaults_to_cursor_agent_worker(tmp_path):
-    assert validate(raw_config(tmp_path))["owner_exempt"] == ["cursor-agent-worker"]
+def test_owner_exempt_defaults_to_off(tmp_path):
+    assert validate(raw_config(tmp_path))["owner_exempt"] == []
+
+
+def test_owner_exempt_can_be_turned_on(tmp_path):
+    assert (validate(raw_config(tmp_path, owner_exempt=["cursor-agent-worker"]))
+            ["owner_exempt"] == ["cursor-agent-worker"])
 
 
 def test_owner_exempt_can_be_turned_off(tmp_path):
@@ -41,7 +46,7 @@ def test_owner_exempt_rejects_anything_but_known_kinds(tmp_path, value):
 
 
 def test_starter_template_states_the_default():
-    assert tomllib.loads(TEMPLATE)["owner_exempt"] == ["cursor-agent-worker"]
+    assert tomllib.loads(TEMPLATE)["owner_exempt"] == []
 
 
 def gate_engine(tmp_path, **extra):
@@ -52,8 +57,11 @@ def gate_engine(tmp_path, **extra):
     return Engine(validate(raw_config(tmp_path, **extra)), tmp_path / "state", key_path=key)
 
 
-@pytest.mark.parametrize("extra,expected", [({}, ["cursor-agent-worker"]),
-                                            ({"owner_exempt": []}, [])])
+@pytest.mark.parametrize("extra,expected", [
+    ({}, []),
+    ({"owner_exempt": []}, []),
+    ({"owner_exempt": ["cursor-agent-worker"]}, ["cursor-agent-worker"]),
+])
 def test_gate_receives_configured_owner_exempt(tmp_path, extra, expected):
     engine = gate_engine(tmp_path, **extra)
     calls = []
@@ -74,7 +82,7 @@ def test_unvalidated_config_dict_keeps_the_default(tmp_path):
     seen = []
     engine.gate = lambda *a, **k: seen.append(k["owner_exempt"]) or Result("pass", "ok")
     engine._check_gate(engine.cfg["rafts"][0])
-    assert seen == [["cursor-agent-worker"]]
+    assert seen == [[]]
 
 
 # Real /proc checks through the installed Raft Ward. The fake process runs a
@@ -152,9 +160,10 @@ def test_real_proc_cursor_agent_worker(tmp_path):
     worker = start(tmp_path, marker, "worker", "start", ready=has_cmdline(marker))
     try:
         engine, _ = real_engine(tmp_path, marker)
-        assert dry_check(engine) == "pass"
-        engine, _ = real_engine(tmp_path, marker, owner_exempt=[])
         assert dry_check(engine) == "owning-app-running"
+        engine, _ = real_engine(tmp_path, marker,
+                                owner_exempt=["cursor-agent-worker"])
+        assert dry_check(engine) == "pass"
     finally:
         worker.terminate()
         worker.wait(timeout=5)
@@ -165,7 +174,8 @@ def test_real_proc_other_cursor_agent_commands_still_own(tmp_path):
     marker = "cursor-agent-rmtest-" + secrets.token_hex(4)
     other = start(tmp_path, marker, "chat", ready=has_cmdline(marker))
     try:
-        engine, _ = real_engine(tmp_path, marker)
+        engine, _ = real_engine(tmp_path, marker,
+                                owner_exempt=["cursor-agent-worker"])
         assert dry_check(engine) == "owning-app-running"
     finally:
         other.terminate()
@@ -180,7 +190,8 @@ def test_real_proc_exempt_worker_holding_the_raft_still_blocks(tmp_path):
         conn.execute("CREATE TABLE t(x)")
     worker = start(tmp_path, marker, "worker", "start", hold=db, ready=has_open(db))
     try:
-        engine, _ = real_engine(tmp_path, marker)
+        engine, _ = real_engine(tmp_path, marker,
+                                owner_exempt=["cursor-agent-worker"])
         assert dry_check(engine) == "target-handle-open"
     finally:
         worker.terminate()

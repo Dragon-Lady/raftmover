@@ -32,13 +32,14 @@ with `owning-app-running`, including a shell, script, or wrapper whose command
 line merely mentions the app (for example `bash -c "... codex ..."`). Run Mover
 from a plain shell and pick process names that only the app itself uses.
 
-Cursor's background agent worker (`cursor-agent ... worker start`) does not
-hold rafts by itself. `owner_exempt = ["cursor-agent-worker"]`, the default,
+Cursor's background agent worker (`cursor-agent ... worker start`) counts as
+an owner by default, matching Raft Ward, so it holds rafts with
+`owning-app-running`. On a machine that needs moves to proceed while that
+detached worker runs, set `owner_exempt = ["cursor-agent-worker"]`. That
 passes Raft Ward 0.1.5's fixed exemption for that worker only. The editor and
 every other `cursor-agent` command still count as owners, and the worker still
 blocks a move if it has the database or a sidecar open or looks like a
-transfer. Set `owner_exempt = []` to treat the worker as an owner again; no
-other values are accepted.
+transfer. `owner_exempt = []` is the default; no other values are accepted.
 
 Bare `move` never closes an app. An experimental opt-in `quit = "signal:TERM"` app setting
 allows `move --close` or a timer's `--auto` run to politely close an idle app.
