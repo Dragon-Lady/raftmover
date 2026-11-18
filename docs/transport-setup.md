@@ -193,6 +193,24 @@ A pickup that races an upload, or sees a fresh manifest-less packet folder,
 reports `incomplete-packet` with exit code `3`. Retry after the upload finishes;
 an abandoned incomplete folder is swept only after seven days.
 
+## Optional: Cursor background agent worker
+
+By default, matching Raft Ward, Cursor's detached background agent worker
+(`cursor-agent ... worker start`) counts as an owner and holds that app's
+rafts with `owning-app-running`. The editor and every other `cursor-agent`
+command also count as owners.
+
+If a machine needs moves to proceed while that worker runs, and the worker
+does not have the database or a sidecar open, set this in the private config:
+
+```toml
+owner_exempt = ["cursor-agent-worker"]
+```
+
+That is Raft Ward's fixed exemption for that worker only. An exempt worker is
+still checked for open raft files and transfer activity. `owner_exempt = []`
+keeps the default. No other values are accepted.
+
 ## Optional idle app closing
 
 Bare `move` asks you to close an owning app yourself. To opt into a polite
